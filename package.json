@@ -1,0 +1,33 @@
+{
+  "name": "binjson",
+  "version": "1.0.0",
+  "description": "A compact binary encoding for JSON-like data (with MongoDB-style ObjectId/Pointer), plus OPFS-backed file support",
+  "main": "js/binjson.js",
+  "type": "module",
+  "exports": {
+    ".": "./js/binjson.js",
+    "./wasm": "./wasm/binjson-wasm.js"
+  },
+  "files": [
+    "js",
+    "wasm",
+    "src",
+    "include",
+    "lib"
+  ],
+  "scripts": {
+    "build:wasm": "./build-wasm.sh",
+    "prepack": "npm run build:wasm"
+  },
+  "keywords": [
+    "binary",
+    "json",
+    "encoding",
+    "opfs",
+    "storage",
+    "objectid",
+    "serialization"
+  ],
+  "author": "",
+  "license": "BSD-2-Clause"
+}
