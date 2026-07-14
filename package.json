@@ -13,8 +13,12 @@
     "wasm",
     "src",
     "include",
-    "lib"
+    "lib",
+    "bin"
   ],
+  "bin": {
+    "binjson": "bin/binjson.js"
+  },
   "scripts": {
     "build:wasm": "./build-wasm.sh",
     "prepack": "npm run build:wasm"
