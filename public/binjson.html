@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Binary JSON with OPFS Demo</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      color: #333;
+    }
+    .container {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+    .success {
+      background: #d4edda;
+      color: #155724;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+    textarea {
+      width: 100%;
+      min-height: 200px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .output {
+      background: #f8f9fa;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 15px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .info {
+      background: #d1ecf1;
+      color: #0c5460;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Binary JSON with OPFS Demo</h1>
+  
+  <div class="container">
+    <div class="info">
+      <strong>Note:</strong> File operations now use Web Workers for FileSystemSyncAccessHandle support.<br>
+      All file I/O is handled asynchronously in a dedicated worker thread.<br>
+      Supported browsers include Chrome 102+, Edge 102+, and Opera 88+.
+    </div>
+    <div class="error" id="workerWarning" style="display: none;">
+      <strong>Warning:</strong> File operations are not working because Web Worker context is unavailable or an error occurred.
+    </div>
+  </div>
+
+  <div class="container">
+    <h2>Codec</h2>
+    <div class="info">
+      Encoding/decoding runs on the main thread with the
+      <strong>WebAssembly (C)</strong> codec — the C implementation compiled to
+      WASM. The Web Worker only does raw file I/O.
+    </div>
+    <div id="codecStatus" class="info">Active codec: WebAssembly (C)</div>
+  </div>
+
+  <div class="container">
+    <h2>File Operations (Requires Web Worker)</h2>
+    
+    <div>
+      <label for="filename">Filename:</label>
+      <input type="text" id="filename" value="test.bj" placeholder="Enter filename">
+    </div>
+
+    <div>
+      <label for="jsonInput">JSON Data to Write:</label>
+      <textarea id="jsonInput" placeholder='Enter JSON data, e.g., {"name": "John", "age": 30}'>{
+  "name": "Test Document",
+  "id": ObjectId("507f1f77bcf86cd799439011"),
+  "createdAt": Date("2023-01-15T12:30:45Z"),
+  "dataPointer": Pointer(2048),
+  "count": 42,
+  "price": 99.99,
+  "active": true,
+  "tags": ["javascript", "binary", "json"],
+  "metadata": {
+    "created": 1234567890,
+    "updated": null
+  }
+}</textarea>
+    </div>
+
+    <div class="controls">
+      <button id="writeFileBtn">Write to File</button>
+      <button id="readFileBtn">Read from File</button>
+      <button id="appendToFileBtn">Append to File</button>
+      <button id="scanFileBtn">Scan File (Read All Records)</button>
+      <button id="deleteFileBtn">Delete File</button>
+      <button id="checkFileExistsBtn">Check if File Exists</button>
+    </div>
+
+    <div id="message"></div>
+
+    <div>
+      <h3>Output:</h3>
+      <div id="output" class="output">No output yet...</div>
+    </div>
+  </div>
+
+  <div class="container">
+    <h2>Encoding/Decoding Demo</h2>
+    
+    <div class="info">
+      <strong>Supported special types:</strong><br>
+      • <code>ObjectId("507f1f77bcf86cd799439011")</code> - MongoDB ObjectId<br>
+      • <code>Date("2023-01-15T12:30:45Z")</code> - ISO date string<br>
+      • <code>Pointer(2048)</code> - File offset pointer (non-negative 64-bit integer)
+    </div>
+    
+    <div>
+      <label for="encodeInput">Data to Encode:</label>
+      <textarea id="encodeInput" placeholder='Enter JSON data to encode with optional ObjectId() and Date()'>{"test": "value", "number": 42, "created": Date("2023-01-15T12:30:45Z"), "_id": ObjectId("507f1f77bcf86cd799439011"), "offset": Pointer(1024)}</textarea>
+    </div>
+
+    <div class="controls">
+      <button id="encodeBtn">Encode to Binary</button>
+      <button id="decodeBtn">Decode from Binary</button>
+    </div>
+
+    <div id="encodeMessage"></div>
+
+    <div>
+      <h3>Binary Output (Hex):</h3>
+      <div id="binaryOutput" class="output">No output yet...</div>
+    </div>
+
+    <div>
+      <h3>Decoded Output (JSON):</h3>
+      <div id="decodeOutput" class="output">No output yet...</div>
+    </div>
+  </div>
+
+  <div class="container">
+    <h2>Type Byte Reference</h2>
+    <div class="output">
+NULL:    0x00
+FALSE:   0x01
+TRUE:    0x02
+INT:     0x03 (32-bit signed integer, 4 bytes, little-endian)
+FLOAT:   0x04 (64-bit float, 8 bytes, little-endian)
+STRING:  0x05 (length as 32-bit uint + UTF-8 bytes)
+OID:     0x06 (MongoDB ObjectId, 12 bytes)
+DATE:    0x07 (64-bit signed integer, milliseconds since epoch)
+POINTER: 0x08 (64-bit non-negative integer, file offset)
+ARRAY:   0x10 (length as 32-bit uint + elements)
+OBJECT:  0x11 (num keys as 32-bit uint + key-value pairs)
+    </div>
+  </div>
+
+  <script type="module">
+
+    import * as wasmCodec from '/wasm/binjson-wasm.js';
+
+    // ObjectId/Pointer are re-exported by the WASM module.
+    const { ObjectId, Pointer } = wasmCodec;
+
+    // The WASM codec must be instantiated before any encode/decode.
+    let wasmReady = false;
+    try {
+      await wasmCodec.ready();
+      wasmReady = true;
+    } catch (err) {
+      console.error('WASM codec failed to load:', err);
+    }
+
+    function codec() {
+      return wasmCodec;
+    }
+    function codecLabel() {
+      return 'WebAssembly (C)';
+    }
+
+    let currentBinary = null;
+
+    // Initialize web worker for file operations
+    const worker = new Worker('/site/worker.js', { type: 'module' });
+    let workerMessageId = 0;
+    const workerPromises = new Map();
+    
+    worker.addEventListener('message', (event) => {
+      const { id, result, error } = event.data;
+      const promise = workerPromises.get(id);
+      
+      if (promise) {
+        if (error) {
+          promise.reject(new Error(error));
+        } else {
+          promise.resolve(result);
+        }
+        workerPromises.delete(id);
+      }
+    });
+    
+    worker.addEventListener('error', (event) => {
+      console.error('Worker error:', event.message);
+      document.getElementById('workerWarning').style.display = 'block';
+    });
+    
+    function callWorker(operation, filename, data) {
+      return new Promise((resolve, reject) => {
+        const id = ++workerMessageId;
+        workerPromises.set(id, { resolve, reject });
+        
+        worker.postMessage({ id, operation, filename, data });
+      });
+    }
+
+    // Parse extended JSON with ObjectId() and Date() constructors
+    function parseExtendedJSON(jsonString) {
+      // Replace ObjectId("...") with a temporary marker
+      const objectIdPattern = /ObjectId\("([a-fA-F0-9]{24})"\)/g;
+      const objectIds = [];
+      let objectIdIndex = 0;
+      const jsonWithObjectIdMarkers = jsonString.replace(objectIdPattern, (match, hex) => {
+        objectIds.push(hex);
+        return `"__OBJECTID_${objectIdIndex++}__"`;
+      });
+
+      // Replace Date("...") with a temporary marker
+      const datePattern = /Date\("([^"]+)"\)/g;
+      const dates = [];
+      let dateIndex = 0;
+      const jsonWithDateMarkers = jsonWithObjectIdMarkers.replace(datePattern, (match, dateStr) => {
+        dates.push(dateStr);
+        return `"__DATE_${dateIndex++}__"`;
+      });
+
+      // Replace Pointer(...) with a temporary marker
+      const pointerPattern = /Pointer\((\d+)\)/g;
+      const pointers = [];
+      let pointerIndex = 0;
+      const jsonWithMarkers = jsonWithDateMarkers.replace(pointerPattern, (match, offset) => {
+        pointers.push(parseInt(offset));
+        return `"__POINTER_${pointerIndex++}__"`;
+      });
+
+      // Parse the JSON
+      const data = JSON.parse(jsonWithMarkers);
+
+      // Replace markers with actual objects
+      function replaceMarkers(obj) {
+        if (obj === null || typeof obj !== 'object') {
+          return obj;
+        }
+
+        if (Array.isArray(obj)) {
+          return obj.map(replaceMarkers);
+        }
+
+        const result = {};
+        for (const key in obj) {
+          const value = obj[key];
+          if (typeof value === 'string') {
+            const objectIdMatch = value.match(/^__OBJECTID_(\d+)__$/);
+            if (objectIdMatch) {
+              result[key] = new ObjectId(objectIds[parseInt(objectIdMatch[1])]);
+              continue;
+            }
+
+            const dateMatch = value.match(/^__DATE_(\d+)__$/);
+            if (dateMatch) {
+              result[key] = new Date(dates[parseInt(dateMatch[1])]);
+              continue;
+            }
+
+            const pointerMatch = value.match(/^__POINTER_(\d+)__$/);
+            if (pointerMatch) {
+              result[key] = new Pointer(pointers[parseInt(pointerMatch[1])]);
+              continue;
+            }
+          }
+
+          result[key] = replaceMarkers(value);
+        }
+        return result;
+      }
+
+      return replaceMarkers(data);
+    }
+
+    // Recursively render decoded values, showing the rich types explicitly.
+    function toDisplay(value) {
+      if (value instanceof ObjectId) return `ObjectId("${value.toString()}")`;
+      if (value instanceof Pointer) return `Pointer(${value.valueOf()})`;
+      if (value instanceof Date) return `Date("${value.toISOString()}")`;
+      if (value instanceof Uint8Array) {
+        const hex = Array.from(value).map(b => b.toString(16).padStart(2, '0')).join('');
+        return `Binary[${value.length}](${hex})`;
+      }
+      if (Array.isArray(value)) return value.map(toDisplay);
+      if (value && typeof value === 'object') {
+        const out = {};
+        for (const key of Object.keys(value)) out[key] = toDisplay(value[key]);
+        return out;
+      }
+      return value;
+    }
+    function formatOutput(value) {
+      return JSON.stringify(toDisplay(value), null, 2);
+    }
+
+    function showMessage(elementId, message, type = 'success') {
+      const element = document.getElementById(elementId);
+      element.innerHTML = `<div class="${type}">${message}</div>`;
+      setTimeout(() => {
+        element.innerHTML = '';
+      }, 5000);
+    }
+
+    async function writeFile() {
+      try {
+        const filename = document.getElementById('filename').value || 'demo.bj';
+        const jsonInput = document.getElementById('jsonInput').value;
+        const data = parseExtendedJSON(jsonInput);
+        const t0 = performance.now();
+        const binary = codec().encode(data);
+        const ms = (performance.now() - t0).toFixed(3);
+
+        await callWorker('write', filename, Array.from(binary));
+        showMessage('message', `Wrote ${binary.length} bytes to ${filename} (encoded with ${codecLabel()} in ${ms} ms)`);
+        document.getElementById('output').textContent = 'Data written to file successfully!';
+      } catch (error) {
+        showMessage('message', `Error: ${error.message}`, 'error');
+        console.error(error);
+      }
+    }
+
+    document.getElementById('writeFileBtn').addEventListener('click', writeFile);
+
+    async function readFile() {
+      try {
+        const filename = document.getElementById('filename').value || 'demo.bj';
+        const bytes = await callWorker('read-bytes', filename);
+        if (!bytes || bytes.length === 0) {
+          showMessage('message', `File ${filename} is empty or does not exist`, 'error');
+          return;
+        }
+        const t0 = performance.now();
+        const data = codec().decode(new Uint8Array(bytes));
+        const ms = (performance.now() - t0).toFixed(3);
+
+        showMessage('message', `Read ${bytes.length} bytes from ${filename} (decoded with ${codecLabel()} in ${ms} ms)`);
+        document.getElementById('output').textContent = formatOutput(data);
+      } catch (error) {
+        showMessage('message', `Error: ${error.message}`, 'error');
+        console.error(error);
+      }
+    }
+
+    document.getElementById('readFileBtn').addEventListener('click', readFile);
+
+    async function appendToFile() {
+      try {
+        const filename = document.getElementById('filename').value || 'demo.bj';
+        const jsonInput = document.getElementById('jsonInput').value;
+        const data = parseExtendedJSON(jsonInput);
+        const binary = codec().encode(data);
+
+        await callWorker('append', filename, Array.from(binary));
+        showMessage('message', `Appended ${binary.length} bytes to ${filename} (encoded with ${codecLabel()})`);
+        document.getElementById('output').textContent = 'Data appended to file successfully!';
+      } catch (error) {
+        showMessage('message', `Error: ${error.message}`, 'error');
+        console.error(error);
+      }
+    }
+
+    document.getElementById('appendToFileBtn').addEventListener('click', appendToFile);
+
+    async function scanFile() {
+      try {
+        const filename = document.getElementById('filename').value || 'demo.bj';
+        const bytes = await callWorker('read-bytes', filename);
+        const buffer = new Uint8Array(bytes || []);
+
+        const c = codec();
+        const records = [];
+        let offset = 0;
+        const t0 = performance.now();
+        while (offset < buffer.length) {
+          const value = c.decode(buffer.subarray(offset));
+          records.push(value);
+          // Values are canonically encoded, so re-encoding gives the byte length.
+          offset += c.encode(value).length;
+        }
+        const ms = (performance.now() - t0).toFixed(3);
+
+        showMessage('message', `Scanned ${records.length} record(s) from ${filename} (decoded with ${codecLabel()} in ${ms} ms)`);
+        document.getElementById('output').textContent = formatOutput(records);
+      } catch (error) {
+        showMessage('message', `Error: ${error.message}`, 'error');
+        console.error(error);
+      }
+    }
+
+    document.getElementById('scanFileBtn').addEventListener('click', scanFile);
+
+    async function deleteFile() {
+      try {
+        const filename = document.getElementById('filename').value || 'demo.bj';
+        await callWorker('delete', filename);
+        
+        showMessage('message', `Successfully deleted ${filename}`);
+        document.getElementById('output').textContent = 'File deleted successfully!';
+      } catch (error) {
+        showMessage('message', `Error: ${error.message}`, 'error');
+        console.error(error);
+      }
+    }
+
+    document.getElementById('deleteFileBtn').addEventListener('click', deleteFile);
+
+    async function checkFileExists() {
+      try {
+        const filename = document.getElementById('filename').value || 'demo.bj';
+        const exists = await callWorker('exists', filename);
+        
+        showMessage('message', `File ${filename} ${exists ? 'exists' : 'does not exist'}`);
+        document.getElementById('output').textContent = `File exists: ${exists}`;
+      } catch (error) {
+        showMessage('message', `Error: ${error.message}`, 'error');
+        console.error(error);
+      }
+    }
+
+    document.getElementById('checkFileExistsBtn').addEventListener('click', checkFileExists);
+
+    function testEncode() {
+      try {
+        const input = document.getElementById('encodeInput').value;
+        const data = parseExtendedJSON(input);
+
+        const t0 = performance.now();
+        currentBinary = codec().encode(data);
+        const ms = (performance.now() - t0).toFixed(3);
+
+        // Convert to hex string for display
+        const hexString = Array.from(currentBinary)
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join(' ');
+
+        document.getElementById('binaryOutput').textContent =
+          `Length: ${currentBinary.length} bytes\n\nHex:\n${hexString}`;
+
+        showMessage('encodeMessage', `Encoded to binary with ${codecLabel()} in ${ms} ms`);
+      } catch (error) {
+        showMessage('encodeMessage', `Error: ${error.message}`, 'error');
+        console.error(error);
+      }
+    }
+
+    document.getElementById('encodeBtn').addEventListener('click', testEncode);
+
+    function testDecode() {
+      try {
+        if (!currentBinary) {
+          showMessage('encodeMessage', 'Please encode data first', 'error');
+          return;
+        }
+        
+        const t0 = performance.now();
+        const decoded = codec().decode(currentBinary);
+        const ms = (performance.now() - t0).toFixed(3);
+        document.getElementById('decodeOutput').textContent = formatOutput(decoded);
+
+        showMessage('encodeMessage', `Decoded binary with ${codecLabel()} in ${ms} ms`);
+      } catch (error) {
+        showMessage('encodeMessage', `Error: ${error.message}`, 'error');
+        console.error(error);
+      }
+    }
+    
+    document.getElementById('decodeBtn').addEventListener('click', testDecode);
+    
+    // Encoding/decoding requires the WASM codec. If it failed to load, disable
+    // the operations that need it with a clear message.
+    if (!wasmReady) {
+      for (const id of ['writeFileBtn', 'readFileBtn', 'appendToFileBtn', 'scanFileBtn', 'deleteFileBtn', 'checkFileExistsBtn', 'encodeBtn', 'decodeBtn']) {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = true;
+      }
+      document.getElementById('message').innerHTML =
+        '<div class="error"><strong>The WebAssembly codec failed to load.</strong> ' +
+        'Ensure <code>lib/binjson.wasm</code> is served (run <code>npm run serve</code>).</div>';
+    }
+
+    // Check OPFS support on load; disable file ops with a persistent, clear
+    // message when it is unavailable (the Encode/Decode demo still works).
+    const fileButtonIds = ['writeFileBtn', 'readFileBtn', 'appendToFileBtn', 'scanFileBtn', 'deleteFileBtn', 'checkFileExistsBtn'];
+    function checkOpfsSupport() {
+      const supported = typeof navigator !== 'undefined' && navigator.storage && navigator.storage.getDirectory;
+      if (supported) return;
+      for (const id of fileButtonIds) {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = true;
+      }
+      document.getElementById('message').innerHTML =
+        '<div class="error"><strong>File operations are disabled:</strong> the Origin Private File System (OPFS) ' +
+        'is not available here. OPFS requires a <strong>secure context</strong> — open this page via ' +
+        '<code>http://localhost:8080/public/binjson.html</code> (run <code>npm run serve</code>) or over https — ' +
+        'and a supported browser (Chrome/Edge/Opera 102+ or Safari 16.4+). ' +
+        'The Encode/Decode demo below works regardless.</div>';
+    }
+    window.addEventListener('load', checkOpfsSupport);
+  </script>
+</body>
+</html>
