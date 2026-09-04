@@ -295,9 +295,16 @@ function encode(value) {
       for (const item of val) {
         encodeValue(item);
       }
-      // Collect encoded elements
+      // Collect encoded elements.
+      //
+      // Appended one at a time, NOT with push(...elements). A spread is an
+      // argument list, and every engine caps that: V8 allows enough that this
+      // looked fine for years, QuickJS stops at 65534, and a document with
+      // more encoded pieces than that then fails to encode at all with
+      // "too many arguments in function call". The count here is a property of
+      // the DATA, so the only safe number of arguments is one.
       const elementBuffers = buffers.splice(startLength);
-      tempBuffers.push(...elementBuffers);
+      for (const buf of elementBuffers) tempBuffers.push(buf);
       
       // Calculate total size of array content
       const contentSize = tempBuffers.reduce((sum, buf) => sum + buf.length, 0);
@@ -308,7 +315,7 @@ function encode(value) {
       const sizeView = new DataView(sizeBuffer);
       sizeView.setUint32(0, contentSize, true);
       buffers.push(new Uint8Array(sizeBuffer));
-      buffers.push(...tempBuffers);
+      for (const buf of tempBuffers) buffers.push(buf);
     } else if (typeof val === 'object') {
       // Encode object to temporary buffer to determine size
       const tempBuffers = [];
@@ -333,9 +340,9 @@ function encode(value) {
         // Encode value
         encodeValue(val[key]);
       }
-      // Collect encoded key-value pairs
+      // Collect encoded key-value pairs — one at a time, see the note above.
       const kvBuffers = buffers.splice(startLength);
-      tempBuffers.push(...kvBuffers);
+      for (const buf of kvBuffers) tempBuffers.push(buf);
       
       // Calculate total size of object content
       const contentSize = tempBuffers.reduce((sum, buf) => sum + buf.length, 0);
@@ -346,7 +353,7 @@ function encode(value) {
       const sizeView = new DataView(sizeBuffer);
       sizeView.setUint32(0, contentSize, true);
       buffers.push(new Uint8Array(sizeBuffer));
-      buffers.push(...tempBuffers);
+      for (const buf of tempBuffers) buffers.push(buf);
     } else {
       throw new Error(`Unsupported type: ${typeof val}`);
     }
