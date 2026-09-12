@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { execFile } from 'child_process';
+import { fileURLToPath } from 'url';
 import { encode, ObjectId, Pointer, deleteFile, getFileHandle } from '../js/binjson.js';
 
 // Set up node-opfs for Node.js environment
@@ -53,9 +54,19 @@ async function writeOpfsFile(bytes) {
   return filename;
 }
 
+/*
+ * The CLI resolved from THIS file and not from the working directory. It was
+ * `'bin/binjson.js'`, which is only correct when the runner's cwd is this
+ * package's root — so the test failed the moment a parent project ran it, and
+ * nisaba-db does: its vitest picks up third_party/**, and a submodule's tests
+ * run from the superproject's root. The data file stays relative, because that
+ * is where OPFS put it: rooted at the cwd, whichever cwd that is.
+ */
+const CLI = fileURLToPath(new URL('../bin/binjson.js', import.meta.url));
+
 function runCli(filePath) {
   return new Promise((resolve, reject) => {
-    execFile('node', ['bin/binjson.js', filePath], { cwd: process.cwd() }, (error, stdout, stderr) => {
+    execFile('node', [CLI, filePath], { cwd: process.cwd() }, (error, stdout, stderr) => {
       if (error) {
         error.stdout = stdout;
         error.stderr = stderr;
