@@ -161,7 +161,31 @@ int bj_put_bool(bj_builder *b, int truthy) {
     return bld_put_scalar(b, &t, 1);
 }
 
+/*
+ * An integer outside the JS safe range is written as a FLOAT, which is what
+ * the reference encoder does: `Number.isInteger(val) && Number.isSafeInteger(val)`
+ * picks INT, and every other number — an integer beyond 2^53 included — takes
+ * the FLOAT branch (js/binjson.js).
+ *
+ * This function used to write INT whatever the magnitude, and the decoders do
+ * not accept that: both this one and the reference's refuse an INT outside the
+ * safe range and abort the decode (BJ_ERR_INT_RANGE, and a throw). So a C
+ * producer could build a document that no conformant reader would read — and
+ * because the failure lands on the whole decode rather than the one value, a
+ * single such integer cost the entire document.
+ *
+ * Found through mdy-docs' C engine, where `big: 9007199254740992` in a
+ * document's front matter made that document disappear from every query: the
+ * insert succeeded, the store held the bytes, and `bj_decode` then refused
+ * them. Nothing reported it.
+ *
+ * The double conversion is the same narrowing the reference's
+ * `view.setFloat64(0, val)` performs on the same number, so both encoders now
+ * produce identical bytes for identical input.
+ */
 int bj_put_int(bj_builder *b, int64_t v) {
+    if (v < BJ_MIN_SAFE_INT || v > BJ_MAX_SAFE_INT)
+        return bj_put_float(b, (double)v);
     uint8_t tmp[9];
     tmp[0] = BJ_TYPE_INT;
     wr_u64le(tmp + 1, (uint64_t)v);
@@ -184,7 +208,15 @@ int bj_put_date(bj_builder *b, int64_t millis) {
     return bld_put_scalar(b, tmp, sizeof(tmp));
 }
 
+/*
+ * The same asymmetry, and the reference answers it differently: a Pointer
+ * offset past MAX_SAFE_INTEGER makes its encoder THROW rather than fall back,
+ * because a pointer is an offset into this buffer and a rounded one points at
+ * the wrong place. So this refuses instead of narrowing.
+ */
 int bj_put_pointer(bj_builder *b, uint64_t off) {
+    if (b->error) return b->error;
+    if (off > (uint64_t)BJ_MAX_SAFE_INT) return bld_fail(b, BJ_ERR_POINTER_RANGE);
     uint8_t tmp[9];
     tmp[0] = BJ_TYPE_POINTER;
     wr_u64le(tmp + 1, off);
